@@ -10,6 +10,57 @@ REQUIRED_COLUMNS = ("Open", "High", "Low", "Close", "Volume")
 PRICE_COLUMNS = ("Open", "High", "Low", "Close")
 
 
+def normalize_yahoo_history(frame: pd.DataFrame) -> pd.DataFrame:
+    """Convert a single-ticker Yahoo Finance response to validated OHLCV data."""
+    if frame.empty:
+        raise ValueError("Yahoo Finance returned no market history.")
+
+    history = frame.copy()
+    if isinstance(history.columns, pd.MultiIndex):
+        price_levels = [
+            level
+            for level in range(history.columns.nlevels)
+            if set(REQUIRED_COLUMNS).issubset(
+                set(history.columns.get_level_values(level))
+            )
+        ]
+        if len(price_levels) != 1:
+            raise ValueError("Could not identify Yahoo Finance price columns.")
+
+        price_level = price_levels[0]
+        ticker_values = history.columns.droplevel(price_level).unique()
+        if len(ticker_values) != 1:
+            raise ValueError("Expected Yahoo Finance data for exactly one ticker.")
+        history.columns = history.columns.get_level_values(price_level)
+
+    if history.columns.has_duplicates:
+        raise ValueError("Yahoo Finance response contains duplicate columns.")
+
+    missing_columns = set(REQUIRED_COLUMNS).difference(history.columns)
+    if missing_columns:
+        names = ", ".join(sorted(missing_columns))
+        raise ValueError(f"Yahoo Finance response is missing columns: {names}.")
+
+    history = history.loc[:, REQUIRED_COLUMNS].copy()
+    try:
+        history.index = pd.to_datetime(history.index, errors="raise")
+    except (TypeError, ValueError) as error:
+        raise ValueError("Yahoo Finance dates could not be parsed.") from error
+    if history.index.tz is not None:
+        history.index = history.index.tz_localize(None)
+    history.index.name = "Date"
+    history = history.sort_index()
+
+    for column in REQUIRED_COLUMNS:
+        try:
+            history[column] = pd.to_numeric(history[column], errors="raise")
+        except (TypeError, ValueError) as error:
+            raise ValueError("Yahoo Finance values must be numeric.") from error
+
+    validate_history(history)
+    return history
+
+
 def validate_history(history: pd.DataFrame) -> None:
     """Raise ``ValueError`` when daily market history is unsafe to process."""
     if history.empty:
