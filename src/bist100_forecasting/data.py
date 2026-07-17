@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -11,10 +12,51 @@ import yfinance as yf
 DEFAULT_SYMBOL = "XU100.IS"
 DEFAULT_START_DATE = "2010-01-01"
 DEFAULT_END_DATE = "2026-07-01"
+DEFAULT_DATA_PATH = Path("data/raw/bist100.csv")
 REQUIRED_COLUMNS = ("Open", "High", "Low", "Close", "Volume")
 PRICE_COLUMNS = ("Open", "High", "Low", "Close")
 
 Downloader = Callable[..., pd.DataFrame | None]
+
+
+def save_history(history: pd.DataFrame, output_path: Path = DEFAULT_DATA_PATH) -> Path:
+    """Validate and atomically save daily market history as CSV."""
+    validate_history(history)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_suffix(f"{output_path.suffix}.tmp")
+
+    try:
+        history.loc[:, REQUIRED_COLUMNS].to_csv(
+            temporary_path,
+            index_label="Date",
+            date_format="%Y-%m-%d",
+        )
+        temporary_path.replace(output_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return output_path
+
+
+def load_history(input_path: Path = DEFAULT_DATA_PATH) -> pd.DataFrame:
+    """Load a CSV snapshot and apply the market history validation rules."""
+    input_path = Path(input_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Market history file not found: {input_path}")
+
+    history = pd.read_csv(input_path)
+    if "Date" not in history.columns:
+        raise ValueError("Market history CSV must contain a Date column.")
+    try:
+        history["Date"] = pd.to_datetime(
+            history["Date"], format="%Y-%m-%d", errors="raise"
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("Market history CSV contains invalid dates.") from error
+
+    history = history.set_index("Date")
+    validate_history(history)
+    return history.loc[:, REQUIRED_COLUMNS].copy()
 
 
 def download_history(
