@@ -2,12 +2,56 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
+import yfinance as yf
 
 DEFAULT_SYMBOL = "XU100.IS"
+DEFAULT_START_DATE = "2010-01-01"
+DEFAULT_END_DATE = "2026-07-01"
 REQUIRED_COLUMNS = ("Open", "High", "Low", "Close", "Volume")
 PRICE_COLUMNS = ("Open", "High", "Low", "Close")
+
+Downloader = Callable[..., pd.DataFrame | None]
+
+
+def download_history(
+    *,
+    symbol: str = DEFAULT_SYMBOL,
+    start: str = DEFAULT_START_DATE,
+    end: str = DEFAULT_END_DATE,
+    downloader: Downloader = yf.download,
+) -> pd.DataFrame:
+    """Download and normalize daily history; ``end`` is an exclusive date."""
+    if not symbol.strip():
+        raise ValueError("Market symbol cannot be empty.")
+
+    try:
+        start_date = pd.Timestamp(start)
+        end_date = pd.Timestamp(end)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Start and end must be valid dates.") from error
+    if pd.isna(start_date) or pd.isna(end_date):
+        raise ValueError("Start and end must be valid dates.")
+    if start_date >= end_date:
+        raise ValueError("Start date must be earlier than end date.")
+
+    raw_history = downloader(
+        symbol,
+        start=start,
+        end=end,
+        interval="1d",
+        actions=False,
+        auto_adjust=False,
+        progress=False,
+        threads=False,
+        multi_level_index=True,
+    )
+    if raw_history is None:
+        raise ValueError("Yahoo Finance returned no market history.")
+    return normalize_yahoo_history(raw_history)
 
 
 def normalize_yahoo_history(frame: pd.DataFrame) -> pd.DataFrame:
