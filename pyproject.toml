@@ -18,6 +18,9 @@ dependencies = [
     "yfinance>=0.2.54",
 ]
 
+[project.scripts]
+bist100-download = "bist100_forecasting.cli:main"
+
 [dependency-groups]
 dev = [
     "jupyterlab>=4.3",
