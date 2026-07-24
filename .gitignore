@@ -182,6 +182,7 @@ cython_debug/
 
 # Downloaded project data
 /data/raw/
+/data/processed/
 
 # Generated analysis figures
 /reports/figures/

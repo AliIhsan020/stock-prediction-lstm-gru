@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ DEFAULT_VALIDATION_RATIO = 0.15
 DEFAULT_FEATURE_COLUMNS = REQUIRED_COLUMNS
 DEFAULT_TARGET_COLUMN = "Close"
 DEFAULT_LOOKBACK = 60
+DEFAULT_PROCESSED_DATA_PATH = Path("data/processed/bist100_sequences.npz")
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +178,49 @@ def create_windowed_split(
         ),
         test=create_sequence_windows(test_history, scalers, lookback=lookback),
     )
+
+
+def save_windowed_split(
+    windows: WindowedSplit,
+    scalers: FittedScalers,
+    output_path: Path = DEFAULT_PROCESSED_DATA_PATH,
+) -> Path:
+    """Atomically save model-ready arrays and scaling metadata as compressed NPZ."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_suffix(f"{output_path.suffix}.tmp")
+
+    try:
+        with temporary_path.open("wb") as temporary_file:
+            np.savez_compressed(
+                temporary_file,
+                train_features=windows.train.features,
+                train_targets=windows.train.targets,
+                train_target_dates=windows.train.target_dates.to_numpy(
+                    dtype="datetime64[ns]"
+                ),
+                validation_features=windows.validation.features,
+                validation_targets=windows.validation.targets,
+                validation_target_dates=windows.validation.target_dates.to_numpy(
+                    dtype="datetime64[ns]"
+                ),
+                test_features=windows.test.features,
+                test_targets=windows.test.targets,
+                test_target_dates=windows.test.target_dates.to_numpy(
+                    dtype="datetime64[ns]"
+                ),
+                feature_columns=np.asarray(scalers.feature_columns),
+                target_column=np.asarray(scalers.target_column),
+                feature_scale=scalers.feature_scaler.scale_,
+                feature_offset=scalers.feature_scaler.min_,
+                target_scale=scalers.target_scaler.scale_,
+                target_offset=scalers.target_scaler.min_,
+                lookback=np.asarray(windows.train.features.shape[1], dtype=np.int64),
+            )
+        temporary_path.replace(output_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return output_path
 
 
 def _validate_split_ratios(train_ratio: float, validation_ratio: float) -> None:
