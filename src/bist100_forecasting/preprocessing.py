@@ -75,6 +75,27 @@ class WindowedSplit:
     test: SequenceWindows
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedArchive:
+    """Loaded model arrays and the metadata needed for evaluation."""
+
+    windows: WindowedSplit
+    feature_columns: tuple[str, ...]
+    target_column: str
+    feature_scale: np.ndarray
+    feature_offset: np.ndarray
+    target_scale: np.ndarray
+    target_offset: np.ndarray
+    lookback: int
+
+    def inverse_target(self, values: np.ndarray) -> np.ndarray:
+        """Restore scaled target values without refitting a scaler."""
+        scaled_values = np.asarray(values, dtype=np.float64)
+        if not np.isfinite(scaled_values).all():
+            raise ValueError("Scaled target values must be finite.")
+        return (scaled_values - self.target_offset.item()) / self.target_scale.item()
+
+
 def split_history(
     history: pd.DataFrame,
     *,
@@ -223,6 +244,67 @@ def save_windowed_split(
     return output_path
 
 
+def load_prepared_archive(
+    input_path: Path = DEFAULT_PROCESSED_DATA_PATH,
+) -> PreparedArchive:
+    """Load and validate a saved model-ready NPZ archive."""
+    input_path = Path(input_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Prepared data archive not found: {input_path}")
+
+    with np.load(input_path, allow_pickle=False) as stored:
+        required_keys = {
+            "train_features",
+            "train_targets",
+            "train_target_dates",
+            "validation_features",
+            "validation_targets",
+            "validation_target_dates",
+            "test_features",
+            "test_targets",
+            "test_target_dates",
+            "feature_columns",
+            "target_column",
+            "feature_scale",
+            "feature_offset",
+            "target_scale",
+            "target_offset",
+            "lookback",
+        }
+        missing_keys = sorted(required_keys.difference(stored.files))
+        if missing_keys:
+            names = ", ".join(missing_keys)
+            raise ValueError(f"Prepared archive is missing fields: {names}.")
+
+        feature_columns = tuple(
+            str(column) for column in stored["feature_columns"].tolist()
+        )
+        target_column = str(stored["target_column"].item())
+        lookback = int(stored["lookback"].item())
+        feature_scale = stored["feature_scale"].astype(np.float64, copy=True)
+        feature_offset = stored["feature_offset"].astype(np.float64, copy=True)
+        target_scale = stored["target_scale"].astype(np.float64, copy=True)
+        target_offset = stored["target_offset"].astype(np.float64, copy=True)
+        windows = WindowedSplit(
+            train=_load_stored_windows(stored, "train"),
+            validation=_load_stored_windows(stored, "validation"),
+            test=_load_stored_windows(stored, "test"),
+        )
+
+    archive = PreparedArchive(
+        windows=windows,
+        feature_columns=feature_columns,
+        target_column=target_column,
+        feature_scale=feature_scale,
+        feature_offset=feature_offset,
+        target_scale=target_scale,
+        target_offset=target_offset,
+        lookback=lookback,
+    )
+    _validate_prepared_archive(archive)
+    return archive
+
+
 def _validate_split_ratios(train_ratio: float, validation_ratio: float) -> None:
     """Validate that all three chronological split proportions are positive."""
     if not 0 < train_ratio < 1:
@@ -266,3 +348,74 @@ def _validate_scaling_columns(
         names = ", ".join(missing_columns)
         raise ValueError(f"Scaling columns are missing from history: {names}.")
     return columns
+
+
+def _load_stored_windows(stored, split_name: str) -> SequenceWindows:
+    """Copy one split from an open NumPy archive."""
+    return SequenceWindows(
+        features=stored[f"{split_name}_features"].astype(np.float32, copy=True),
+        targets=stored[f"{split_name}_targets"].astype(np.float32, copy=True),
+        target_dates=pd.DatetimeIndex(
+            stored[f"{split_name}_target_dates"].copy(),
+            name="Date",
+        ),
+    )
+
+
+def _validate_prepared_archive(archive: PreparedArchive) -> None:
+    """Validate model dimensions, dates, and scaling metadata."""
+    if not archive.feature_columns:
+        raise ValueError("Prepared archive must contain feature columns.")
+    if len(archive.feature_columns) != len(set(archive.feature_columns)):
+        raise ValueError("Prepared archive feature columns must be unique.")
+    if not archive.target_column:
+        raise ValueError("Prepared archive target column must not be empty.")
+    if archive.lookback <= 0:
+        raise ValueError("Prepared archive lookback must be positive.")
+
+    feature_count = len(archive.feature_columns)
+    for name, window in (
+        ("Training", archive.windows.train),
+        ("Validation", archive.windows.validation),
+        ("Test", archive.windows.test),
+    ):
+        if window.features.ndim != 3:
+            raise ValueError(f"{name} features must be three-dimensional.")
+        if window.targets.ndim != 1:
+            raise ValueError(f"{name} targets must be one-dimensional.")
+        if len(window.features) == 0:
+            raise ValueError(f"{name} split must not be empty.")
+        if len(window.features) != len(window.targets):
+            raise ValueError(f"{name} features and targets must have equal lengths.")
+        if len(window.target_dates) != len(window.targets):
+            raise ValueError(f"{name} target dates must align with targets.")
+        if window.features.shape[1:] != (archive.lookback, feature_count):
+            raise ValueError(f"{name} feature shape does not match archive metadata.")
+        if (
+            not np.isfinite(window.features).all()
+            or not np.isfinite(window.targets).all()
+        ):
+            raise ValueError(f"{name} arrays must contain only finite values.")
+        if window.target_dates.has_duplicates:
+            raise ValueError(f"{name} target dates must be unique.")
+        if not window.target_dates.is_monotonic_increasing:
+            raise ValueError(f"{name} target dates must be in ascending order.")
+
+    if archive.feature_scale.shape != (feature_count,):
+        raise ValueError("Feature scale shape does not match feature columns.")
+    if archive.feature_offset.shape != (feature_count,):
+        raise ValueError("Feature offset shape does not match feature columns.")
+    if archive.target_scale.shape != (1,) or archive.target_offset.shape != (1,):
+        raise ValueError("Target scaling metadata must contain one value.")
+    scaling_values = np.concatenate(
+        [
+            archive.feature_scale,
+            archive.feature_offset,
+            archive.target_scale,
+            archive.target_offset,
+        ]
+    )
+    if not np.isfinite(scaling_values).all():
+        raise ValueError("Prepared archive scaling metadata must be finite.")
+    if np.any(archive.feature_scale == 0) or archive.target_scale.item() == 0:
+        raise ValueError("Prepared archive scaling factors must be non-zero.")
