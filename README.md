@@ -67,3 +67,26 @@ uv run python -m bist100_forecasting
 ```
 
 Downloaded CSV files are generated locally and are not committed to Git.
+
+## Explore the data in Streamlit
+
+Start the local dashboard from the project root:
+
+```bash
+uv run streamlit run app.py
+```
+
+Streamlit opens the dashboard at `http://localhost:8501`. The sidebar can
+download or refresh the BIST 100 history for a selected date range. The main
+page displays:
+
+- the number of observations and latest closing value;
+- total return, maximum drawdown, and daily volatility;
+- closing-value and daily-return charts;
+- the 20 most recent OHLCV observations;
+- a button for downloading the current dataset as CSV.
+
+The dashboard currently supports data collection and exploratory analysis.
+LSTM and GRU training and prediction views will be added in later stages.
+
+Press `Ctrl+C` in the terminal to stop the dashboard.
