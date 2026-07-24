@@ -11,6 +11,7 @@ from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 
+from bist100_forecasting.checkpoints import BestCheckpoint
 from bist100_forecasting.preprocessing import SequenceWindows, WindowedSplit
 
 DEFAULT_BATCH_SIZE = 32
@@ -243,6 +244,7 @@ def fit_model(
     loss_function: nn.Module | None = None,
     gradient_clip: float | None = DEFAULT_GRADIENT_CLIP,
     early_stopping: EarlyStopping | None = None,
+    checkpoint: BestCheckpoint | None = None,
 ) -> tuple[EpochResult, ...]:
     """Train for a maximum number of epochs and record validation loss."""
     _validate_integer(epochs, name="Epochs", minimum=1)
@@ -271,6 +273,14 @@ def fit_model(
                 validation_loss=validation_loss,
             )
         )
+        if checkpoint is not None:
+            checkpoint.update(
+                model,
+                optimizer,
+                epoch=epoch,
+                validation_loss=validation_loss,
+                history=history,
+            )
         if early_stopping is not None and early_stopping.update(
             validation_loss,
             epoch=epoch,
