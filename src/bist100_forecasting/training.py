@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -67,6 +68,56 @@ class EpochResult:
     epoch: int
     train_loss: float
     validation_loss: float
+
+
+@dataclass(slots=True)
+class EarlyStopping:
+    """Track validation improvements and signal when training should stop."""
+
+    patience: int = 10
+    min_delta: float = 0.0
+    best_loss: float = field(init=False, default=math.inf)
+    best_epoch: int = field(init=False, default=0)
+    epochs_without_improvement: int = field(init=False, default=0)
+    should_stop: bool = field(init=False, default=False)
+
+    def __post_init__(self) -> None:
+        """Validate early-stopping configuration."""
+        _validate_integer(self.patience, name="Patience", minimum=1)
+        if isinstance(self.min_delta, bool) or not isinstance(
+            self.min_delta, (int, float)
+        ):
+            raise TypeError("Minimum delta must be a number.")
+        if not math.isfinite(self.min_delta) or self.min_delta < 0:
+            raise ValueError("Minimum delta must be finite and non-negative.")
+
+    def update(self, validation_loss: float, *, epoch: int) -> bool:
+        """Record one validation loss and return the current stop decision."""
+        if isinstance(validation_loss, bool) or not isinstance(
+            validation_loss, (int, float)
+        ):
+            raise TypeError("Validation loss must be a number.")
+        if not math.isfinite(validation_loss):
+            raise ValueError("Validation loss must be finite.")
+        _validate_integer(epoch, name="Epoch", minimum=1)
+        if self.should_stop:
+            return True
+
+        if validation_loss < self.best_loss - self.min_delta:
+            self.best_loss = float(validation_loss)
+            self.best_epoch = epoch
+            self.epochs_without_improvement = 0
+        else:
+            self.epochs_without_improvement += 1
+            self.should_stop = self.epochs_without_improvement >= self.patience
+        return self.should_stop
+
+    def reset(self) -> None:
+        """Clear observations so the tracker can be reused for a new run."""
+        self.best_loss = math.inf
+        self.best_epoch = 0
+        self.epochs_without_improvement = 0
+        self.should_stop = False
 
 
 def create_data_loaders(
@@ -191,8 +242,9 @@ def fit_model(
     device: str | torch.device = "cpu",
     loss_function: nn.Module | None = None,
     gradient_clip: float | None = DEFAULT_GRADIENT_CLIP,
+    early_stopping: EarlyStopping | None = None,
 ) -> tuple[EpochResult, ...]:
-    """Train for a fixed number of epochs and record validation loss."""
+    """Train for a maximum number of epochs and record validation loss."""
     _validate_integer(epochs, name="Epochs", minimum=1)
     _validate_gradient_clip(gradient_clip)
     history: list[EpochResult] = []
@@ -219,6 +271,11 @@ def fit_model(
                 validation_loss=validation_loss,
             )
         )
+        if early_stopping is not None and early_stopping.update(
+            validation_loss,
+            epoch=epoch,
+        ):
+            break
 
     return tuple(history)
 
