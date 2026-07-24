@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from bist100_forecasting.eda import build_eda_figure, save_eda_figure
@@ -34,7 +33,7 @@ def test_build_eda_figure_creates_close_and_return_panels() -> None:
     assert figure.axes[1].get_title() == "BIST 100 Daily Return"
     assert figure.axes[1].get_ylabel() == "Return (%)"
     assert len(figure.axes[1].lines[0].get_xdata()) == len(history) - 1
-    plt.close(figure)
+    assert figure.canvas.manager is None
 
 
 def test_save_eda_figure_creates_nonempty_png(tmp_path: Path) -> None:
@@ -47,9 +46,7 @@ def test_save_eda_figure_creates_nonempty_png(tmp_path: Path) -> None:
     assert output_path.stat().st_size > 0
 
 
-def test_save_eda_figure_closes_created_figure(tmp_path: Path) -> None:
-    open_figures_before = set(plt.get_fignums())
+def test_build_eda_figure_does_not_require_pyplot_manager() -> None:
+    figure = build_eda_figure(market_history())
 
-    save_eda_figure(market_history(), tmp_path / "bist100.png")
-
-    assert set(plt.get_fignums()) == open_figures_before
+    assert figure.canvas.manager is None

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -70,7 +69,8 @@ def summarize_history(history: pd.DataFrame) -> HistorySummary:
 def build_eda_figure(history: pd.DataFrame) -> Figure:
     """Build closing-value and daily-return panels for validated history."""
     daily_returns_pct = calculate_daily_returns(history).mul(100)
-    figure, axes = plt.subplots(nrows=2, figsize=(12, 8), sharex=True)
+    figure = Figure(figsize=(12, 8))
+    axes = figure.subplots(nrows=2, sharex=True)
 
     axes[0].plot(
         history.index,
@@ -103,12 +103,9 @@ def save_eda_figure(
     history: pd.DataFrame,
     output_path: Path = DEFAULT_EDA_FIGURE,
 ) -> Path:
-    """Save the EDA figure as a PNG and release Matplotlib resources."""
+    """Save the EDA figure as a PNG without requiring a GUI backend."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure = build_eda_figure(history)
-    try:
-        figure.savefig(output_path, dpi=150, bbox_inches="tight")
-    finally:
-        plt.close(figure)
+    figure.savefig(output_path, dpi=150, bbox_inches="tight")
     return output_path
