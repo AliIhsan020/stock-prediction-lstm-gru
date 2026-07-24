@@ -17,3 +17,53 @@ model for each company included in the index.
 > [!IMPORTANT]
 > This repository is a machine learning study, not financial advice or a trading
 > system. Historical prediction accuracy does not guarantee future performance.
+
+## Setup
+
+The project uses Python 3.12 and [uv](https://docs.astral.sh/uv/) for dependency
+management.
+
+```bash
+uv python install 3.12
+uv sync --all-groups
+```
+
+Commands can then be run through `uv run` without manually activating the virtual
+environment.
+
+## Download BIST 100 data
+
+Download the default daily `XU100.IS` snapshot:
+
+```bash
+uv run bist100-download
+```
+
+The command downloads observations from `2010-01-01` through `2026-06-30`,
+validates the OHLCV data, and writes it to:
+
+```text
+data/raw/bist100.csv
+```
+
+Yahoo Finance treats the `--end` value as exclusive. The default end value is
+therefore `2026-07-01`. A custom date range or output path can be supplied:
+
+```bash
+uv run bist100-download --start 2020-01-01 --end 2026-07-01
+uv run bist100-download --output data/raw/custom_bist100.csv
+```
+
+Display every available option:
+
+```bash
+uv run bist100-download --help
+```
+
+The same command can also be run through the Python package:
+
+```bash
+uv run python -m bist100_forecasting
+```
+
+Downloaded CSV files are generated locally and are not committed to Git.
