@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.figure import Figure
 
 from bist100_forecasting.data import validate_history
+
+DEFAULT_EDA_FIGURE = Path("reports/figures/bist100_eda.png")
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,3 +65,50 @@ def summarize_history(history: pd.DataFrame) -> HistorySummary:
         daily_volatility_pct=float(daily_returns.std() * 100),
         maximum_drawdown_pct=float(drawdown.min() * 100),
     )
+
+
+def build_eda_figure(history: pd.DataFrame) -> Figure:
+    """Build closing-value and daily-return panels for validated history."""
+    daily_returns_pct = calculate_daily_returns(history).mul(100)
+    figure, axes = plt.subplots(nrows=2, figsize=(12, 8), sharex=True)
+
+    axes[0].plot(
+        history.index,
+        history["Close"],
+        color="tab:blue",
+        linewidth=1.2,
+    )
+    axes[0].set_title("BIST 100 Daily Closing Value")
+    axes[0].set_ylabel("Index value")
+    axes[0].grid(alpha=0.25)
+
+    axes[1].plot(
+        daily_returns_pct.index,
+        daily_returns_pct,
+        color="tab:orange",
+        linewidth=0.7,
+    )
+    axes[1].axhline(0, color="black", linewidth=0.8, alpha=0.6)
+    axes[1].set_title("BIST 100 Daily Return")
+    axes[1].set_xlabel("Date")
+    axes[1].set_ylabel("Return (%)")
+    axes[1].grid(alpha=0.25)
+
+    figure.suptitle("BIST 100 Exploratory Data Analysis", fontsize=14)
+    figure.tight_layout()
+    return figure
+
+
+def save_eda_figure(
+    history: pd.DataFrame,
+    output_path: Path = DEFAULT_EDA_FIGURE,
+) -> Path:
+    """Save the EDA figure as a PNG and release Matplotlib resources."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure = build_eda_figure(history)
+    try:
+        figure.savefig(output_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(figure)
+    return output_path
