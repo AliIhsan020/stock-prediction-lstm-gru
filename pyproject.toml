@@ -23,6 +23,7 @@ dependencies = [
 bist100-download = "bist100_forecasting.cli:main"
 bist100-eda = "bist100_forecasting.eda_cli:main"
 bist100-prepare = "bist100_forecasting.preprocessing_cli:main"
+bist100-train = "bist100_forecasting.train_cli:main"
 
 [dependency-groups]
 dev = [
