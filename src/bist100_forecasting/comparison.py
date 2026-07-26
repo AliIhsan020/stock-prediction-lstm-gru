@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,6 +18,7 @@ from bist100_forecasting.evaluation import ForecastMetrics, evaluate_forecast
 from bist100_forecasting.inference import ForecastEvaluation
 
 COMPARISON_COLUMNS = ("Rank", "MAE", "RMSE", "MAPE (%)", "R2")
+DEFAULT_COMPARISON_PATH = Path("reports/model_comparison.csv")
 
 
 def compare_forecasts(
@@ -63,6 +65,31 @@ def best_method(comparison: pd.DataFrame) -> str:
             "Comparison table must contain exactly one first-place method."
         )
     return str(ranked_first[0])
+
+
+def save_comparison_table(
+    comparison: pd.DataFrame,
+    output_path: Path = DEFAULT_COMPARISON_PATH,
+) -> Path:
+    """Atomically save a validated comparison table as CSV."""
+    _validate_comparison_table(comparison)
+    numeric_values = comparison.loc[:, COMPARISON_COLUMNS].to_numpy(dtype=np.float64)
+    if not np.isfinite(numeric_values).all():
+        raise ValueError("Comparison metrics must be finite.")
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_suffix(f"{output_path.suffix}.tmp")
+    try:
+        comparison.to_csv(
+            temporary_path,
+            index_label="Method",
+            float_format="%.6f",
+        )
+        temporary_path.replace(output_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return output_path
 
 
 def _validate_model_forecasts(

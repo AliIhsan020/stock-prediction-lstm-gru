@@ -1,10 +1,16 @@
 """Tests for aligned model and baseline comparison."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from bist100_forecasting.comparison import best_method, compare_forecasts
+from bist100_forecasting.comparison import (
+    best_method,
+    compare_forecasts,
+    save_comparison_table,
+)
 from bist100_forecasting.evaluation import evaluate_forecast
 from bist100_forecasting.inference import ForecastEvaluation
 
@@ -132,3 +138,39 @@ def test_compare_forecasts_rejects_missing_or_conflicting_models(
 def test_best_method_rejects_incomplete_table() -> None:
     with pytest.raises(ValueError, match="missing columns"):
         best_method(pd.DataFrame({"RMSE": [1.0]}, index=["GRU"]))
+
+
+def test_save_comparison_table_writes_reloadable_csv(tmp_path: Path) -> None:
+    history = market_history()
+    comparison = compare_forecasts(
+        history,
+        {"LSTM": model_forecast(history, offset=0.0)},
+        moving_average_window=5,
+    )
+    output_path = tmp_path / "comparison.csv"
+
+    result_path = save_comparison_table(comparison, output_path)
+    restored = pd.read_csv(output_path, index_col="Method")
+
+    assert result_path == output_path
+    assert list(restored.columns) == ["Rank", "MAE", "RMSE", "MAPE (%)", "R2"]
+    assert list(restored.index) == list(comparison.index)
+    assert not output_path.with_suffix(".csv.tmp").exists()
+
+
+def test_save_comparison_table_rejects_non_finite_metrics(
+    tmp_path: Path,
+) -> None:
+    comparison = pd.DataFrame(
+        {
+            "Rank": [1],
+            "MAE": [np.nan],
+            "RMSE": [1.0],
+            "MAPE (%)": [1.0],
+            "R2": [0.5],
+        },
+        index=pd.Index(["LSTM"], name="Method"),
+    )
+
+    with pytest.raises(ValueError, match="finite"):
+        save_comparison_table(comparison, tmp_path / "comparison.csv")

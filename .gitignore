@@ -187,5 +187,8 @@ cython_debug/
 # Generated analysis figures
 /reports/figures/
 
+# Generated model comparison report
+/reports/model_comparison.csv
+
 # Trained model checkpoints
 /models/checkpoints/
