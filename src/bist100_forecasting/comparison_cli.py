@@ -11,24 +11,20 @@ import pandas as pd
 import torch
 
 from bist100_forecasting.baselines import DEFAULT_MOVING_AVERAGE_WINDOW
-from bist100_forecasting.checkpoints import load_checkpoint
 from bist100_forecasting.comparison import (
     DEFAULT_COMPARISON_PATH,
-    best_method,
-    compare_forecasts,
     save_comparison_table,
 )
 from bist100_forecasting.data import DEFAULT_DATA_PATH, load_history
-from bist100_forecasting.inference import evaluate_model_forecast
-from bist100_forecasting.models import GRUForecaster, LSTMForecaster
+from bist100_forecasting.model_results import (
+    DEFAULT_GRU_CHECKPOINT_PATH,
+    DEFAULT_LSTM_CHECKPOINT_PATH,
+    evaluate_saved_models,
+)
 from bist100_forecasting.preprocessing import (
     DEFAULT_PROCESSED_DATA_PATH,
-    load_prepared_archive,
 )
-from bist100_forecasting.train_cli import (
-    default_checkpoint_path,
-    resolve_device,
-)
+from bist100_forecasting.train_cli import resolve_device
 from bist100_forecasting.training import DEFAULT_BATCH_SIZE
 
 
@@ -54,12 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lstm-checkpoint",
         type=Path,
-        default=default_checkpoint_path("lstm"),
+        default=DEFAULT_LSTM_CHECKPOINT_PATH,
     )
     parser.add_argument(
         "--gru-checkpoint",
         type=Path,
-        default=default_checkpoint_path("gru"),
+        default=DEFAULT_GRU_CHECKPOINT_PATH,
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_COMPARISON_PATH)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
@@ -85,46 +81,21 @@ def run_comparison(args: argparse.Namespace) -> ComparisonResult:
     )
     device = resolve_device(args.device)
     history = load_history(args.history)
-    archive = load_prepared_archive(args.input)
-    lstm = _load_expected_model(
-        args.lstm_checkpoint,
-        expected_type=LSTMForecaster,
-        model_name="LSTM",
-        device=device,
-    )
-    gru = _load_expected_model(
-        args.gru_checkpoint,
-        expected_type=GRUForecaster,
-        model_name="GRU",
-        device=device,
-    )
-    model_forecasts = {
-        "LSTM": evaluate_model_forecast(
-            lstm,
-            archive.windows.test,
-            archive,
-            batch_size=args.batch_size,
-            device=device,
-        ),
-        "GRU": evaluate_model_forecast(
-            gru,
-            archive.windows.test,
-            archive,
-            batch_size=args.batch_size,
-            device=device,
-        ),
-    }
-    table = compare_forecasts(
+    saved_results = evaluate_saved_models(
         history,
-        model_forecasts,
+        archive_path=args.input,
+        lstm_checkpoint_path=args.lstm_checkpoint,
+        gru_checkpoint_path=args.gru_checkpoint,
+        batch_size=args.batch_size,
         moving_average_window=args.moving_average_window,
+        device=device,
     )
-    output_path = save_comparison_table(table, args.output)
+    output_path = save_comparison_table(saved_results.comparison, args.output)
     return ComparisonResult(
-        table=table,
-        winner=best_method(table),
+        table=saved_results.comparison,
+        winner=saved_results.winner,
         output_path=output_path,
-        test_samples=len(archive.windows.test.targets),
+        test_samples=len(saved_results.lstm.evaluation.actual),
         device=device,
     )
 
@@ -140,22 +111,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Best method by RMSE: {result.winner}")
     print(f"Comparison report saved to: {result.output_path}")
     return 0
-
-
-def _load_expected_model(
-    checkpoint_path: Path,
-    *,
-    expected_type: type[LSTMForecaster] | type[GRUForecaster],
-    model_name: str,
-    device: torch.device,
-) -> LSTMForecaster | GRUForecaster:
-    """Load a checkpoint and verify that it contains the expected model."""
-    loaded = load_checkpoint(checkpoint_path, device=device)
-    if not isinstance(loaded.model, expected_type):
-        raise ValueError(
-            f"{model_name} checkpoint contains {type(loaded.model).__name__}."
-        )
-    return loaded.model
 
 
 def _validate_positive_integer(value: int, *, name: str) -> None:
