@@ -8,15 +8,18 @@ import pandas as pd
 import streamlit as st
 
 from bist100_forecasting.data import (
-    DEFAULT_DATA_PATH,
-    DEFAULT_END_DATE,
     DEFAULT_START_DATE,
-    DEFAULT_SYMBOL,
     download_history,
+    history_path_for_symbol,
     load_history,
     save_history,
 )
 from bist100_forecasting.eda import build_eda_figure, summarize_history
+from bist100_forecasting.instruments import (
+    BIST100_INDEX,
+    SELECTABLE_INSTRUMENTS,
+    Instrument,
+)
 from bist100_forecasting.model_results import (
     SavedModelResult,
     SavedModelResults,
@@ -32,46 +35,57 @@ def inclusive_to_exclusive_end(end_date: date) -> str:
     return (end_date + timedelta(days=1)).isoformat()
 
 
-def download_selected_history(start_date: date, end_date: date) -> pd.DataFrame:
+def download_selected_history(
+    instrument: Instrument,
+    start_date: date,
+    end_date: date,
+) -> pd.DataFrame:
     """Download the selected date range and persist the validated snapshot."""
     if start_date > end_date:
         raise ValueError("Start date must not be later than end date.")
 
     history = download_history(
+        symbol=instrument.yahoo_symbol,
         start=start_date.isoformat(),
         end=inclusive_to_exclusive_end(end_date),
     )
-    save_history(history)
+    save_history(history, history_path_for_symbol(instrument.code))
     return history
 
 
-def _load_or_stop() -> pd.DataFrame:
+def _load_or_stop(instrument: Instrument) -> pd.DataFrame:
     """Load local history or stop the page with an actionable message."""
+    data_path = history_path_for_symbol(instrument.code)
     try:
-        return load_history()
+        return load_history(data_path)
     except FileNotFoundError:
         st.info(
-            "No local BIST 100 dataset was found. Use **Download / refresh data** "
-            "in the sidebar to create it."
+            f"No local dataset was found for **{instrument.label}**. Use "
+            "**Download selected data** in the sidebar to create it."
         )
-        st.code("uv run bist100-download", language="bash")
         st.stop()
 
 
-def _render_sidebar() -> tuple[date, date, bool]:
-    """Render data controls and return the selected dates and refresh action."""
+def _render_sidebar() -> tuple[Instrument, date, date, bool]:
+    """Render controls and return the selected instrument, dates, and action."""
     default_start = date.fromisoformat(DEFAULT_START_DATE)
-    default_end = date.fromisoformat(DEFAULT_END_DATE) - timedelta(days=1)
+    default_end = date.today()
 
     with st.sidebar:
         st.header("Data controls")
-        st.text_input("Symbol", value=DEFAULT_SYMBOL, disabled=True)
+        instrument = st.selectbox(
+            "Instrument",
+            options=SELECTABLE_INSTRUMENTS,
+            format_func=lambda item: item.label,
+        )
         start_date = st.date_input("Start date", value=default_start)
         end_date = st.date_input("End date", value=default_end)
-        refresh = st.button("Download / refresh data", type="primary")
-        st.caption(f"Local file: `{DEFAULT_DATA_PATH.as_posix()}`")
+        refresh = st.button("Download selected data", type="primary")
+        data_path = history_path_for_symbol(instrument.code)
+        st.caption(f"Yahoo symbol: `{instrument.yahoo_symbol}`")
+        st.caption(f"Local file: `{data_path.as_posix()}`")
 
-    return start_date, end_date, refresh
+    return instrument, start_date, end_date, refresh
 
 
 def _render_summary(history: pd.DataFrame) -> None:
@@ -93,14 +107,14 @@ def _render_summary(history: pd.DataFrame) -> None:
     )
 
 
-def _render_analysis_tabs(history: pd.DataFrame) -> None:
+def _render_analysis_tabs(history: pd.DataFrame, instrument: Instrument) -> None:
     """Render exploratory data and saved-model results."""
     chart_tab, data_tab, model_tab = st.tabs(
         ["Charts", "Recent observations", "Model results"]
     )
 
     with chart_tab:
-        figure = build_eda_figure(history)
+        figure = build_eda_figure(history, instrument.label)
         st.pyplot(figure, clear_figure=True, width="stretch")
 
     with data_tab:
@@ -110,12 +124,18 @@ def _render_analysis_tabs(history: pd.DataFrame) -> None:
         st.download_button(
             "Download current CSV",
             data=csv_data,
-            file_name="bist100.csv",
+            file_name=f"{instrument.code.lower()}.csv",
             mime="text/csv",
         )
 
     with model_tab:
-        _render_model_results(history)
+        if instrument != BIST100_INDEX:
+            st.info(
+                "Saved LSTM and GRU checkpoints currently belong to the BIST 100 "
+                "index. A model for the selected stock has not been trained yet."
+            )
+        else:
+            _render_model_results(history)
 
 
 def build_prediction_frame(results: SavedModelResults) -> pd.DataFrame:
@@ -211,20 +231,23 @@ def render_dashboard() -> None:
         "Explore validated BIST 100 history and compare saved LSTM and GRU results."
     )
 
-    start_date, end_date, refresh = _render_sidebar()
+    instrument, start_date, end_date, refresh = _render_sidebar()
     if start_date > end_date:
         st.error("Start date must not be later than end date.")
         st.stop()
 
     if refresh:
-        with st.spinner("Downloading and validating BIST 100 history..."):
-            history = download_selected_history(start_date, end_date)
-        st.success(f"Saved {len(history):,} validated observations.")
+        with st.spinner(f"Downloading and validating {instrument.label} history..."):
+            history = download_selected_history(instrument, start_date, end_date)
+        st.success(
+            f"Saved {len(history):,} validated observations for {instrument.code}."
+        )
     else:
-        history = _load_or_stop()
+        history = _load_or_stop(instrument)
 
+    st.markdown(f"### {instrument.label}")
     _render_summary(history)
-    _render_analysis_tabs(history)
+    _render_analysis_tabs(history, instrument)
     st.warning(
         "Educational project only. Historical model accuracy does not guarantee "
         "future performance and is not financial advice."

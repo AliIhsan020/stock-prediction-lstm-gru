@@ -28,7 +28,7 @@ def test_build_eda_figure_creates_close_and_return_panels() -> None:
 
     assert len(figure.axes) == 2
     assert figure.axes[0].get_title() == "BIST 100 Daily Closing Value"
-    assert figure.axes[0].get_ylabel() == "Index value"
+    assert figure.axes[0].get_ylabel() == "Closing value"
     assert len(figure.axes[0].lines[0].get_xdata()) == len(history)
     assert figure.axes[1].get_title() == "BIST 100 Daily Return"
     assert figure.axes[1].get_ylabel() == "Return (%)"
@@ -50,3 +50,11 @@ def test_build_eda_figure_does_not_require_pyplot_manager() -> None:
     figure = build_eda_figure(market_history())
 
     assert figure.canvas.manager is None
+
+
+def test_build_eda_figure_uses_selected_instrument_label() -> None:
+    figure = build_eda_figure(market_history(), "THYAO — Türk Hava Yolları")
+
+    assert figure.axes[0].get_title() == "THYAO — Türk Hava Yolları Daily Closing Value"
+    assert figure.axes[0].get_ylabel() == "Closing value"
+    assert figure.axes[1].get_title() == "THYAO — Türk Hava Yolları Daily Return"

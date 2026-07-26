@@ -35,7 +35,7 @@ def to_yahoo_symbol(value: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Instrument:
-    """A selectable BIST 100 constituent."""
+    """A selectable BIST market instrument."""
 
     code: str
     name: str
@@ -154,10 +154,12 @@ _CATALOG_ROWS = (
     ("ESEN", "Esenboğa Elektrik"),
 )
 
+BIST100_INDEX = Instrument(code="XU100", name="BIST 100 Endeksi")
 BIST100_INSTRUMENTS = tuple(
     Instrument(code=code, name=name) for code, name in _CATALOG_ROWS
 )
 BIST100_CODES = tuple(instrument.code for instrument in BIST100_INSTRUMENTS)
+SELECTABLE_INSTRUMENTS = (BIST100_INDEX, *BIST100_INSTRUMENTS)
 _BIST100_BY_CODE = {instrument.code: instrument for instrument in BIST100_INSTRUMENTS}
 
 

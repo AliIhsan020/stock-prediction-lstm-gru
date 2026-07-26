@@ -66,7 +66,9 @@ def summarize_history(history: pd.DataFrame) -> HistorySummary:
     )
 
 
-def build_eda_figure(history: pd.DataFrame) -> Figure:
+def build_eda_figure(
+    history: pd.DataFrame, instrument_label: str = "BIST 100"
+) -> Figure:
     """Build closing-value and daily-return panels for validated history."""
     daily_returns_pct = calculate_daily_returns(history).mul(100)
     figure = Figure(figsize=(12, 8))
@@ -78,8 +80,8 @@ def build_eda_figure(history: pd.DataFrame) -> Figure:
         color="tab:blue",
         linewidth=1.2,
     )
-    axes[0].set_title("BIST 100 Daily Closing Value")
-    axes[0].set_ylabel("Index value")
+    axes[0].set_title(f"{instrument_label} Daily Closing Value")
+    axes[0].set_ylabel("Closing value")
     axes[0].grid(alpha=0.25)
 
     axes[1].plot(
@@ -89,12 +91,12 @@ def build_eda_figure(history: pd.DataFrame) -> Figure:
         linewidth=0.7,
     )
     axes[1].axhline(0, color="black", linewidth=0.8, alpha=0.6)
-    axes[1].set_title("BIST 100 Daily Return")
+    axes[1].set_title(f"{instrument_label} Daily Return")
     axes[1].set_xlabel("Date")
     axes[1].set_ylabel("Return (%)")
     axes[1].grid(alpha=0.25)
 
-    figure.suptitle("BIST 100 Exploratory Data Analysis", fontsize=14)
+    figure.suptitle(f"{instrument_label} Exploratory Data Analysis", fontsize=14)
     figure.tight_layout()
     return figure
 

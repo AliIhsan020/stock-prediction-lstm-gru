@@ -9,14 +9,25 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from bist100_forecasting.instruments import normalize_bist_code
+
 DEFAULT_SYMBOL = "XU100.IS"
 DEFAULT_START_DATE = "2010-01-01"
 DEFAULT_END_DATE = "2026-07-01"
 DEFAULT_DATA_PATH = Path("data/raw/bist100.csv")
+RAW_DATA_DIRECTORY = DEFAULT_DATA_PATH.parent
 REQUIRED_COLUMNS = ("Open", "High", "Low", "Close", "Volume")
 PRICE_COLUMNS = ("Open", "High", "Low", "Close")
 
 Downloader = Callable[..., pd.DataFrame | None]
+
+
+def history_path_for_symbol(symbol: str) -> Path:
+    """Return the isolated raw-data path used by one market instrument."""
+    code = normalize_bist_code(symbol)
+    if code == "XU100":
+        return DEFAULT_DATA_PATH
+    return RAW_DATA_DIRECTORY / "stocks" / f"{code.lower()}.csv"
 
 
 def save_history(history: pd.DataFrame, output_path: Path = DEFAULT_DATA_PATH) -> Path:

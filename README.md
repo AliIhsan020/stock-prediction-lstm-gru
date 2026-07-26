@@ -14,8 +14,11 @@ The project covers the complete workflow:
 - evaluation against simple forecasting baselines;
 - notebook analysis and a local Streamlit dashboard.
 
-The first version models the BIST 100 index itself. It does not train a separate
-model for every company included in the index.
+The dashboard contains a fixed catalogue of the current BIST 100 constituents.
+It downloads only the instrument selected by the user and stores each stock in
+a separate local CSV. The saved LSTM/GRU checkpoints and reference model results
+currently remain specific to the BIST 100 index; stock-specific forecasting is
+the next extension.
 
 > [!IMPORTANT]
 > This repository is a machine learning study, not financial advice or a trading
@@ -203,6 +206,9 @@ Open `http://localhost:8501` if Streamlit does not open it automatically.
 
 The dashboard provides:
 
+- a fixed BIST 100 constituent selector;
+- on-demand download of only the selected index or stock;
+- separate local CSV storage for every selected stock;
 - validated dataset statistics;
 - closing-value, return, and drawdown charts;
 - recent OHLCV observations and CSV download;
@@ -225,6 +231,24 @@ The test period contained 242 observations from `2025-06-23` through
 | 20-day moving average | 447.16 | 541.78 | 3.64% | 0.8695 |
 | LSTM | 431.18 | 547.24 | 3.37% | 0.8668 |
 | GRU | 435.43 | 547.70 | 3.43% | 0.8666 |
+
+The metrics in the table mean:
+
+- **MAE (Mean Absolute Error):** the average absolute distance between the
+  predicted and actual close. For the LSTM, this was about 431.18 index points.
+- **RMSE (Root Mean Squared Error):** similar to MAE, but gives larger mistakes
+  more weight. Lower values are better.
+- **MAPE (Mean Absolute Percentage Error):** the average absolute error as a
+  percentage of the actual value. The LSTM result of 3.37% means its predictions
+  differed from the actual close by 3.37% on average during this test period.
+- **R²:** measures how much of the test-period variation is represented by the
+  predictions. Values closer to 1 are better, but a high R² alone does not prove
+  that a model is useful for next-day trading.
+
+MAPE is an error rate, not a classification accuracy score. Therefore, the LSTM
+result should not be presented as "96.63% accurate." This project evaluates
+continuous price forecasts, where MAE, RMSE, MAPE, and comparison with simple
+baselines are more informative than a single accuracy percentage.
 
 Persistence produced the lowest RMSE in this run. This is an important baseline
 result: the recurrent models followed the index but did not outperform the
@@ -284,14 +308,25 @@ uv run ruff format --check src tests app.py
 uv lock --check
 ```
 
+The latest full verification run completed with:
+
+```text
+268 passed
+Ruff checks passed
+50 source and test files correctly formatted
+uv.lock is up to date
+```
+
 The tests cover data validation and storage, preprocessing leakage safeguards,
 sequence creation, recurrent-model dimensions, training behavior, early
 stopping, checkpoints, inference ordering, metrics, baselines, CLI workflows,
-comparison logic, and Streamlit rendering.
+comparison logic, fixed instrument selection, isolated stock-data paths, and
+Streamlit rendering.
 
 ## Limitations
 
-- The project forecasts the BIST 100 index, not its individual constituents.
+- The dashboard can download and analyze individual BIST 100 constituents, but
+  the saved LSTM and GRU models currently forecast only the BIST 100 index.
 - Yahoo Finance data quality and availability can change.
 - Results come from one chronological holdout rather than walk-forward
   validation across multiple market regimes.

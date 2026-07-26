@@ -6,7 +6,9 @@ from bist100_forecasting.instruments import (
     BIST100_CATALOG_EFFECTIVE_FROM,
     BIST100_CATALOG_EFFECTIVE_TO,
     BIST100_CODES,
+    BIST100_INDEX,
     BIST100_INSTRUMENTS,
+    SELECTABLE_INSTRUMENTS,
     get_bist100_instrument,
     normalize_bist_code,
     to_yahoo_symbol,
@@ -17,6 +19,13 @@ def test_catalog_contains_exactly_one_hundred_unique_instruments() -> None:
     assert len(BIST100_INSTRUMENTS) == 100
     assert len(BIST100_CODES) == 100
     assert len(set(BIST100_CODES)) == 100
+
+
+def test_selectable_instruments_keep_index_separate_from_constituents() -> None:
+    assert SELECTABLE_INSTRUMENTS[0] == BIST100_INDEX
+    assert BIST100_INDEX.code == "XU100"
+    assert BIST100_INDEX not in BIST100_INSTRUMENTS
+    assert len(SELECTABLE_INSTRUMENTS) == 101
 
 
 def test_catalog_reflects_third_quarter_2026_review() -> None:

@@ -12,6 +12,7 @@ from streamlit.testing.v1 import AppTest
 import bist100_forecasting.dashboard as dashboard
 from bist100_forecasting.evaluation import evaluate_forecast
 from bist100_forecasting.inference import ForecastEvaluation
+from bist100_forecasting.instruments import BIST100_INDEX, get_bist100_instrument
 from bist100_forecasting.model_results import SavedModelResult, SavedModelResults
 
 APP_PATH = Path(__file__).parents[1] / "app.py"
@@ -92,13 +93,21 @@ def test_download_selected_history_downloads_and_saves(monkeypatch) -> None:
     monkeypatch.setattr(dashboard, "save_history", save)
 
     result = dashboard.download_selected_history(
+        get_bist100_instrument("THYAO"),
         date(2025, 1, 2),
         date(2025, 1, 6),
     )
 
     assert result is history
-    download.assert_called_once_with(start="2025-01-02", end="2025-01-07")
-    save.assert_called_once_with(history)
+    download.assert_called_once_with(
+        symbol="THYAO.IS",
+        start="2025-01-02",
+        end="2025-01-07",
+    )
+    save.assert_called_once_with(
+        history,
+        Path("data/raw/stocks/thyao.csv"),
+    )
 
 
 def test_download_selected_history_rejects_reversed_dates(monkeypatch) -> None:
@@ -107,6 +116,7 @@ def test_download_selected_history_rejects_reversed_dates(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="Start date must not be later"):
         dashboard.download_selected_history(
+            BIST100_INDEX,
             date(2025, 1, 7),
             date(2025, 1, 6),
         )
@@ -115,7 +125,7 @@ def test_download_selected_history_rejects_reversed_dates(monkeypatch) -> None:
 
 
 def test_dashboard_renders_saved_history(monkeypatch) -> None:
-    monkeypatch.setattr(dashboard, "load_history", market_history)
+    monkeypatch.setattr(dashboard, "load_history", lambda _path: market_history())
     monkeypatch.setattr(
         dashboard,
         "missing_model_artifacts",
@@ -138,12 +148,14 @@ def test_dashboard_renders_saved_history(monkeypatch) -> None:
         "Recent observations",
         "Model results",
     ]
-    assert app.button[0].label == "Download / refresh data"
+    assert app.button[0].label == "Download selected data"
+    assert len(app.selectbox[0].options) == 101
+    assert app.selectbox[0].value == BIST100_INDEX
     assert "both trained checkpoints are required" in app.info[0].value
 
 
 def test_dashboard_renders_saved_model_comparison(monkeypatch) -> None:
-    monkeypatch.setattr(dashboard, "load_history", market_history)
+    monkeypatch.setattr(dashboard, "load_history", lambda _path: market_history())
     monkeypatch.setattr(dashboard, "missing_model_artifacts", lambda: ())
     monkeypatch.setattr(
         dashboard,
@@ -182,7 +194,7 @@ def test_build_prediction_frame_aligns_model_series() -> None:
 
 
 def test_dashboard_explains_how_to_create_missing_data(monkeypatch) -> None:
-    def missing_history() -> pd.DataFrame:
+    def missing_history(_path: Path) -> pd.DataFrame:
         raise FileNotFoundError
 
     monkeypatch.setattr(dashboard, "load_history", missing_history)
@@ -190,5 +202,5 @@ def test_dashboard_explains_how_to_create_missing_data(monkeypatch) -> None:
     app = AppTest.from_file(str(APP_PATH), default_timeout=10).run()
 
     assert not app.exception
-    assert "No local BIST 100 dataset was found" in app.info[0].value
-    assert app.code[0].value == "uv run bist100-download"
+    assert "No local dataset was found" in app.info[0].value
+    assert BIST100_INDEX.label in app.info[0].value

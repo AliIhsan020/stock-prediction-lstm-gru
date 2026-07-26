@@ -5,7 +5,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from bist100_forecasting.data import load_history, save_history
+from bist100_forecasting.data import (
+    DEFAULT_DATA_PATH,
+    history_path_for_symbol,
+    load_history,
+    save_history,
+)
 
 
 def valid_history() -> pd.DataFrame:
@@ -31,6 +36,15 @@ def test_save_and_load_history_round_trip(tmp_path: Path) -> None:
 
     assert result == output_path
     pd.testing.assert_frame_equal(loaded, history, check_freq=False)
+
+
+def test_history_path_preserves_existing_index_location() -> None:
+    assert history_path_for_symbol("XU100.IS") == DEFAULT_DATA_PATH
+
+
+def test_history_path_isolates_each_stock_snapshot() -> None:
+    assert history_path_for_symbol("thyao") == Path("data/raw/stocks/thyao.csv")
+    assert history_path_for_symbol("GARAN.IS") == Path("data/raw/stocks/garan.csv")
 
 
 def test_save_history_creates_parent_directories(tmp_path: Path) -> None:
